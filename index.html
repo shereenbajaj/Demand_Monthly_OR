@@ -187,7 +187,7 @@
     <div class="dm-grid2">
       <div class="dm-card">
         <p class="dm-card-t">Offline donation</p>
-        <p class="dm-card-d">Collected per month, ₹ — dashed line is the 15-month average</p>
+        <p class="dm-card-d">Collected per month, ₹ — dashed line is the <span class="dm-n">15</span>-month average</p>
         <div id="dmOffAmt"></div>
       </div>
       <div class="dm-card">
@@ -216,11 +216,11 @@
 
   <section class="dm-sec">
     <div class="dm-sec-h"><h2 class="dm-sec-t">Order economics</h2></div>
-    <p class="dm-sec-d">Ticket size, order and donor counts, and tipping behaviour across the 15 months. Where a chart carries a dashed line, that is its own 15-month average.</p>
+    <p class="dm-sec-d">Ticket size, order and donor counts, and tipping behaviour across the <span class="dm-n">15</span> months. Where a chart carries a dashed line, that is its own <span class="dm-n">15</span>-month average.</p>
     <div class="dm-grid2">
       <div class="dm-card">
         <p class="dm-card-t">Average order value</p>
-        <p class="dm-card-d">Donation ÷ orders, ₹ — dashed line is the 15-month average</p>
+        <p class="dm-card-d">Donation ÷ orders, ₹ — dashed line is the <span class="dm-n">15</span>-month average</p>
         <div id="dmAov"></div>
       </div>
       <div class="dm-card">
@@ -234,12 +234,12 @@
       </div>
       <div class="dm-card">
         <p class="dm-card-t">Tip attach rate</p>
-        <p class="dm-card-d">Share of orders that included a tip — dashed line is the 15-month average</p>
+        <p class="dm-card-d">Share of orders that included a tip — dashed line is the <span class="dm-n">15</span>-month average</p>
         <div id="dmTipRate"></div>
       </div>
       <div class="dm-card">
         <p class="dm-card-t">Average tip</p>
-        <p class="dm-card-d">Per tipped order, ₹ — dashed line is the 15-month average</p>
+        <p class="dm-card-d">Per tipped order, ₹ — dashed line is the <span class="dm-n">15</span>-month average</p>
         <div id="dmAvgTip"></div>
       </div>
     </div>
@@ -1075,6 +1075,12 @@
     var lastM = months[months.length-1];
     var yoyIdx = MONTHS.indexOf(lastM) - 12;
     var yoy = yoyIdx >= 0 ? agg(MONTHS[yoyIdx], state.cat) : null;
+
+    /* Copy that names the window length is filled from the data, not hardcoded —
+       the table gains a month every month, and stale copy is worse than none. */
+    Array.prototype.forEach.call(document.querySelectorAll(".dm-n"), function(n){
+      n.textContent = MONTHS.length;
+    });
 
     document.getElementById("dmSub").textContent =
       catLabel(state.cat) + " · " + mLabel(months[0]) + " – " + mLabel(lastM) +
