@@ -1,0 +1,1368 @@
+<title>Demand Monthly</title>
+<style>
+  :root{
+    color-scheme: light;
+    --surface-1:#fcfcfb; --plane:#f9f9f7;
+    --ink-1:#0b0b0b; --ink-2:#52514e; --ink-3:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --hair:rgba(11,11,11,0.10);
+    --online:#2a78d6; --offline:#eb6834;
+    /* Light-only design. The category steps for NGO medical and NGO non-medical are
+       darker than the reference palette's light slots so all four clear 3:1 against
+       the surface on their own — with no dark mode and no table view, nothing else
+       is left to carry a series whose color is too faint to see. Validated: worst
+       adjacent CVD ΔE 8.4, normal-vision 19.1, all four ≥ 3:1. */
+    --c-pm:#2a78d6; --c-pnm:#eb6834; --c-nm:#199e70; --c-nnm:#c07e00;
+    /* The three checkout steps. Validated all-pairs (these lines cross, so adjacency
+       isn't enough): worst CVD ΔE 8.4 protan / 5.5 tritan, normal-vision 21.6, all
+       three ≥ 3:1. Tritan is below the floor, so each series also carries its own
+       marker shape as a second identity channel. */
+    --s1:#2a78d6; --s2:#eb6834; --s3:#199e70;
+    --seq-250:#86b6ef; --seq-350:#5598e7; --seq-450:#2a78d6; --seq-550:#1c5cab; --seq-650:#104281;
+    /* Ordinal ramp for the six funnel stages, dark at the mouth to light at the
+       spout. Stops at step 250 — the lightest step that still clears 2:1 on this
+       surface, so the last stage is visible even as a sliver. */
+    --f1:#0d366b; --f2:#184f95; --f3:#256abf; --f4:#3987e5; --f5:#6da7ec; --f6:#86b6ef;
+    --good:#006300; --bad:#d03b3b; --warn:#fab219;
+    --dim:#c3c2b7;
+  }
+  body{background:var(--plane);color:var(--ink-1);margin:0;
+       font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+  .dm-root{background:var(--plane);color:var(--ink-1);min-height:100%;
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    padding-inline:16px; padding-block:24px 64px;}
+  .dm-root *{box-sizing:border-box}
+  .dm-wrap{max-width:1180px;margin:0 auto}
+  .dm-hero-top{display:flex;align-items:flex-start;justify-content:space-between;
+    gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  .dm-hero-titles{min-width:0}
+  /* The header doubles as the way back to All categories, but only once a category
+     filter is on — until then there is nothing to go back to. */
+  .dm-hero.is-filtered{cursor:pointer;transition:border-color .12s}
+  .dm-hero.is-filtered:hover{border-color:var(--ink-3)}
+  .dm-hero:focus-visible{outline:2px solid var(--online);outline-offset:2px}
+  .dm-back{font:inherit;font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:8px;
+    border:1px solid var(--hair);background:var(--surface-1);color:var(--ink-2);
+    cursor:pointer;white-space:nowrap;flex:none;transition:background .12s,color .12s}
+  .dm-back:hover{background:var(--plane);color:var(--ink-1)}
+  .dm-back:focus-visible{outline:2px solid var(--online);outline-offset:2px}
+  .dm-title{font-size:20px;font-weight:650;letter-spacing:-0.01em;margin:0}
+  .dm-sub{font-size:13px;color:var(--ink-2);margin:4px 0 0}
+  /* Live status: a dot, when the data was last read, and a way to force a read.
+     Muted by default — it should be findable, not attention-grabbing. */
+  .dm-status{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-3);
+    margin:8px 0 0;flex-wrap:wrap}
+  .dm-status-dot{width:7px;height:7px;border-radius:50%;background:var(--ink-3);flex:none;
+    transition:background .2s}
+  .dm-status[data-state="live"] .dm-status-dot{background:var(--c-nm)}
+  .dm-status[data-state="loading"] .dm-status-dot{background:var(--c-nnm)}
+  .dm-status[data-state="stale"] .dm-status-dot{background:var(--c-pnm)}
+  .dm-status[data-state="stale"]{color:var(--c-pnm)}
+  .dm-refresh{font:inherit;font-size:12px;padding:2px 9px;border-radius:7px;
+    border:1px solid var(--hair);background:var(--surface-1);color:var(--ink-2);
+    cursor:pointer;transition:background .12s,color .12s}
+  .dm-refresh:hover{background:var(--plane);color:var(--ink-1)}
+  .dm-refresh:focus-visible{outline:2px solid var(--online);outline-offset:2px}
+  .dm-refresh[disabled]{opacity:.5;cursor:default}
+  .dm-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:26px}
+  .dm-tile{background:var(--surface-1);border:1px solid var(--hair);border-radius:12px;padding:13px 14px;
+    cursor:pointer;text-align:left;font:inherit;position:relative;overflow:hidden;transition:border-color .12s}
+  .dm-tile:hover{border-color:var(--ink-3)}
+  .dm-tile[aria-pressed="true"]{border-color:var(--ink-1);box-shadow:inset 0 0 0 1px var(--ink-1)}
+  .dm-tile-key{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+  .dm-dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .dm-tile-lbl{font-size:11.5px;color:var(--ink-2);font-weight:600;letter-spacing:.01em;line-height:1.25}
+  .dm-tile-val{font-size:21px;font-weight:650;letter-spacing:-0.02em;line-height:1.1}
+  .dm-tile-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
+  .dm-delta{font-size:11.5px;font-weight:600;white-space:nowrap}
+  .dm-delta.up{color:var(--good)} .dm-delta.down{color:var(--bad)} .dm-delta.flat{color:var(--ink-3)}
+
+  .dm-sec{margin:0 0 30px}
+  .dm-sec-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 4px}
+  .dm-sec-t{font-size:15px;font-weight:650;margin:0;letter-spacing:-0.005em}
+  .dm-sec-d{font-size:12.5px;color:var(--ink-2);margin:0 0 14px}
+
+  .dm-hero{background:var(--surface-1);border:1px solid var(--hair);border-radius:12px;
+    padding:18px 20px 20px;margin-bottom:12px}
+  .dm-hero-lbl{font-size:12px;color:var(--ink-2);margin:0 0 4px}
+  .dm-hero-val{font-size:48px;font-weight:650;letter-spacing:-0.03em;line-height:1.05;margin:0}
+  .dm-hero-note{font-size:12.5px;color:var(--ink-2);margin:8px 0 0}
+  .dm-hero-split{display:block;margin-top:4px;font-size:12px;color:var(--ink-3)}
+
+  .dm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+  .dm-kpi{background:var(--surface-1);border:1px solid var(--hair);border-radius:12px;padding:13px 14px}
+  .dm-kpi-lbl{font-size:11.5px;color:var(--ink-2);margin:0 0 5px;line-height:1.3}
+  .dm-kpi-val{font-size:20px;font-weight:650;letter-spacing:-0.02em;line-height:1.1}
+  .dm-kpi-sub{font-size:11.5px;color:var(--ink-3);margin-top:4px}
+
+  .dm-card{background:var(--surface-1);border:1px solid var(--hair);border-radius:12px;padding:16px 18px 12px;margin-bottom:12px}
+  .dm-ov{padding:20px 22px 18px}
+  .dm-ov-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:26px 28px}
+  .dm-ov-lbl{font-size:12px;color:var(--ink-2);margin:0 0 5px;line-height:1.3}
+  .dm-ov-val{font-size:25px;font-weight:650;letter-spacing:-0.02em;line-height:1.1;
+    margin-bottom:11px}
+  .dm-ov-strip{display:flex;gap:16px;padding-bottom:10px;margin-bottom:9px;
+    border-bottom:1px solid var(--grid)}
+  .dm-ov-m{display:flex;flex-direction:column;gap:2px}
+  .dm-ov-m-lbl{font-size:10px;color:var(--ink-3);letter-spacing:.04em;text-transform:uppercase}
+  .dm-ov-m-val{font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+  .dm-ov-m.is-now .dm-ov-m-val{color:var(--ink-1);font-weight:620}
+  .dm-ov-d{display:flex;align-items:baseline;gap:10px;font-size:12px;line-height:1.75}
+  .dm-ov-d-lbl{color:var(--ink-3);width:38px;flex:none;font-size:11px}
+  .dm-ov-d-val{font-variant-numeric:tabular-nums;font-weight:600}
+  .dm-ov-d-val.up{color:var(--good)} .dm-ov-d-val.down{color:var(--bad)}
+  .dm-ov-d-val.flat{color:var(--ink-3);font-weight:500}
+  .dm-ov-d-base{color:var(--ink-3);font-size:11px;font-variant-numeric:tabular-nums}
+  @media (max-width:880px){ .dm-ov-grid{grid-template-columns:repeat(2,1fr)} }
+  @media (max-width:560px){ .dm-ov-grid{grid-template-columns:1fr;gap:22px} }
+
+  .dm-card-t{font-size:13.5px;font-weight:620;margin:0 0 2px}
+  .dm-card-d{font-size:12px;color:var(--ink-2);margin:0 0 12px}
+  .dm-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:820px){
+    .dm-grid2{grid-template-columns:1fr}
+    .dm-tiles{grid-template-columns:repeat(2,1fr)}
+    .dm-hero-val{font-size:38px}
+  }
+  @media (max-width:520px){ .dm-tiles{grid-template-columns:1fr} }
+
+  .dm-legend{display:flex;flex-wrap:wrap;gap:14px;margin:0 0 10px}
+  .dm-leg{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2)}
+  .dm-leg i{width:11px;height:11px;border-radius:3px;display:block;flex:none}
+
+  .dm-svg{display:block;width:100%;height:auto;overflow:visible}
+  .dm-tip{position:fixed;z-index:99;pointer-events:none;opacity:0;transition:opacity .09s;
+    background:var(--surface-1);border:1px solid var(--hair);border-radius:9px;padding:9px 11px;
+    box-shadow:0 6px 22px rgba(0,0,0,.16);font-size:12px;min-width:140px}
+  .dm-tip b{display:block;font-size:11.5px;color:var(--ink-2);font-weight:600;margin-bottom:6px}
+  .dm-tip-row{display:flex;align-items:center;gap:7px;justify-content:space-between;margin-top:3px}
+  .dm-tip-row span{display:flex;align-items:center;gap:6px;color:var(--ink-2)}
+  .dm-tip-row i{width:9px;height:9px;border-radius:2px;flex:none}
+  .dm-tip-row em{font-style:normal;font-weight:620;color:var(--ink-1);font-variant-numeric:tabular-nums}
+
+  .dm-note{background:var(--surface-1);border:1px solid var(--hair);border-left:3px solid var(--warn);
+    border-radius:10px;padding:13px 16px;font-size:12.5px;color:var(--ink-2);line-height:1.55}
+  .dm-note strong{color:var(--ink-1)}
+  .dm-note ul{margin:8px 0 0;padding-left:18px} .dm-note li{margin:4px 0}
+</style>
+
+<div class="dm-root">
+<div class="dm-wrap">
+
+  <header class="dm-hero" id="dmHero">
+    <div class="dm-hero-top">
+      <div class="dm-hero-titles">
+        <h1 class="dm-title">Demand — monthly</h1>
+        <p class="dm-sub" id="dmSub"></p>
+        <!-- Always visible, so the page never silently hides which data it is
+             showing. live.js takes it over and reveals Refresh; with no live.js
+             (the standalone artifact) it stays on the snapshot reading. -->
+        <p class="dm-status" id="dmStatus" data-state="snapshot">
+          <span class="dm-status-dot" aria-hidden="true"></span>
+          <span id="dmStatusTxt">Saved snapshot</span>
+          <button class="dm-refresh" id="dmRefresh" type="button" hidden>Refresh</button>
+        </p>
+      </div>
+      <button class="dm-back" id="dmBack" type="button" hidden>← All categories</button>
+    </div>
+    <p class="dm-hero-lbl" id="dmHeroLbl"></p>
+    <p class="dm-hero-val" id="dmHeroVal"></p>
+    <p class="dm-hero-note" id="dmHeroNote"></p>
+  </header>
+
+  <div class="dm-tiles" id="dmTiles"></div>
+
+  <section class="dm-sec">
+    <div class="dm-sec-h"><h2 class="dm-sec-t" id="dmOvT">Overview</h2></div>
+    <p class="dm-sec-d" id="dmOvD"></p>
+    <div class="dm-card dm-ov"><div class="dm-ov-grid" id="dmOverview"></div></div>
+  </section>
+
+  <section class="dm-sec">
+    <div class="dm-sec-h"><h2 class="dm-sec-t">Offline payments</h2></div>
+    <p class="dm-sec-d">QR, bank transfer and coupon collections — a separate pool. None of these
+       amounts or orders are included in any figure in the other sections.</p>
+    <div class="dm-kpis" id="dmOffKpis"></div>
+    <div class="dm-grid2">
+      <div class="dm-card">
+        <p class="dm-card-t">Offline donation</p>
+        <p class="dm-card-d">Collected per month, ₹ — dashed line is the 15-month average</p>
+        <div id="dmOffAmt"></div>
+      </div>
+      <div class="dm-card">
+        <p class="dm-card-t">Inside offline</p>
+        <p class="dm-card-d">QR vs bank transfer vs coupon, ₹</p>
+        <div class="dm-legend">
+          <span class="dm-leg"><i style="background:var(--s1)"></i>QR</span>
+          <span class="dm-leg"><i style="background:var(--s2)"></i>Bank transfer</span>
+          <span class="dm-leg"><i style="background:var(--s3)"></i>Coupon</span>
+        </div>
+        <div id="dmOffMix"></div>
+      </div>
+      <div class="dm-card">
+        <p class="dm-card-t">Offline orders</p>
+        <p class="dm-card-d">Count per month — separate from the online order count</p>
+        <div id="dmOffCnt"></div>
+      </div>
+      <div class="dm-card">
+        <p class="dm-card-t">Average value by payment mode</p>
+        <p class="dm-card-d">Amount ÷ orders, ₹ — log scale, each gridline 10× the one below</p>
+        <div class="dm-legend" id="dmAsvLeg"></div>
+        <div id="dmOffAsv"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="dm-sec">
+    <div class="dm-sec-h"><h2 class="dm-sec-t">Order economics</h2></div>
+    <p class="dm-sec-d">Ticket size, order and donor counts, and tipping behaviour across the 15 months. Where a chart carries a dashed line, that is its own 15-month average.</p>
+    <div class="dm-grid2">
+      <div class="dm-card">
+        <p class="dm-card-t">Average order value</p>
+        <p class="dm-card-d">Donation ÷ orders, ₹ — dashed line is the 15-month average</p>
+        <div id="dmAov"></div>
+      </div>
+      <div class="dm-card">
+        <p class="dm-card-t">Orders and unique donors</p>
+        <p class="dm-card-d">Counts per month</p>
+        <div class="dm-legend">
+          <span class="dm-leg"><i style="background:var(--online)"></i>Orders</span>
+          <span class="dm-leg"><i style="background:var(--offline)"></i>Unique donors</span>
+        </div>
+        <div id="dmOrders"></div>
+      </div>
+      <div class="dm-card">
+        <p class="dm-card-t">Tip attach rate</p>
+        <p class="dm-card-d">Share of orders that included a tip — dashed line is the 15-month average</p>
+        <div id="dmTipRate"></div>
+      </div>
+      <div class="dm-card">
+        <p class="dm-card-t">Average tip</p>
+        <p class="dm-card-d">Per tipped order, ₹ — dashed line is the 15-month average</p>
+        <div id="dmAvgTip"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="dm-sec">
+    <div class="dm-sec-h"><h2 class="dm-sec-t">Funnel</h2></div>
+    <p class="dm-sec-d">The online journey, latest month and the conversion trend behind it. Offline payments do not pass through these stages.</p>
+    <div class="dm-grid2">
+      <div class="dm-card">
+        <p class="dm-card-t" id="dmFunT">Stage volumes</p>
+        <p class="dm-card-d" id="dmFunD">Views through to orders.</p>
+        <div id="dmFunnel"></div>
+      </div>
+      <div class="dm-card">
+        <p class="dm-card-t">Step conversion</p>
+        <p class="dm-card-d">The three checkout steps, each as a share of the step before it.</p>
+        <div class="dm-legend" id="dmStepLeg"></div>
+        <div id="dmSteps"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="dm-sec">
+    <div class="dm-sec-h"><h2 class="dm-sec-t">Campaigns</h2></div>
+    <p class="dm-sec-d">How many were live, how many were newly approved, how many raised anything, and how long the average one stayed up.</p>
+    <div class="dm-kpis" id="dmSupKpis"></div>
+    <div class="dm-card">
+      <p class="dm-card-t">Campaigns live and approved</p>
+      <p class="dm-card-d">Live is what was on the platform that month; approved is what was newly added.</p>
+      <div class="dm-legend">
+        <span class="dm-leg"><i style="background:var(--s1)"></i>Live</span>
+        <span class="dm-leg"><i style="background:var(--s2)"></i>Approved</span>
+      </div>
+      <div id="dmLive"></div>
+    </div>
+  </section>
+
+  <div class="dm-note">
+    <strong>How the two pools relate.</strong>
+    <ul>
+      <li><strong>Online and offline are separate, not a split of one total.</strong>
+          <code>total_donation</code> and <code>total_orders</code> count online only;
+          <code>offline_amount</code> and <code>offline_count</code> sit alongside them and are
+          added to nothing. Money raised in a month is online + offline — for all categories in
+          Aug 26 that is ₹6.36 Cr + ₹1.10 Cr = ₹7.46 Cr. That combined figure is what the header
+          and the four category tiles show; every other figure outside the Offline payments
+          section is online.</li>
+      <li><strong>Offline is almost entirely Personal medical.</strong> It runs about 21% of that
+          category's money raised, against 0.1–0.3% for the other three. A near-zero offline
+          figure elsewhere is the real picture, not missing data.</li>
+      <li><strong>Unique donors and unique visitors do not add across categories.</strong> Anyone
+          who gave to two categories is counted in both, so the All-categories figures for those
+          two are upper bounds. Per-category figures are exact.</li>
+    </ul>
+  </div>
+
+</div>
+<div class="dm-tip" id="dmTip"></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var ROWS = window.DEMAND_ROWS || [];
+  var F = {month:0,cat:1,views:2,visitors:3,donation:4,orders:5,donors:6,tipped:7,tip:8,
+           init:9,cart:10,ordcr:11,live:12,days:13,appr:14,raised:15,offAmt:16,offCnt:17,
+           qr:18,bt:19,cp:20,qrCnt:21,btCnt:22,cpCnt:23};
+  var CATS = [
+    {key:"pm",  label:"Personal medical",   varname:"--c-pm"},
+    {key:"pnm", label:"Personal non-med",   varname:"--c-pnm"},
+    {key:"nm",  label:"NGO medical",        varname:"--c-nm"},
+    {key:"nnm", label:"NGO non-med",        varname:"--c-nnm"}
+  ];
+  var MONTHS = Array.from(new Set(ROWS.map(function(r){return r[0];}))).sort();
+  var state = {cat:"all", table:false};
+
+  /* ---------- formatting ---------- */
+  function inr(n){
+    var a = Math.abs(n);
+    if(a >= 1e7) return "₹" + (n/1e7).toFixed(a>=1e8?1:2) + " Cr";
+    if(a >= 1e5) return "₹" + (n/1e5).toFixed(a>=1e6?1:2) + " L";
+    if(a >= 1e3) return "₹" + Math.round(n).toLocaleString("en-IN");
+    return "₹" + Math.round(n);
+  }
+  function inrFull(n){ return "₹" + Math.round(n).toLocaleString("en-IN"); }
+  /* Two decimals so a ~1% month-on-month move is visible in the figure itself and
+     not only in the delta beneath it — ₹18.0L for both ₹17.96L and ₹18.04L is the
+     bug this avoids. */
+  function inr2(n){
+    var a = Math.abs(n);
+    if(a >= 1e7) return "₹" + (n/1e7).toFixed(2) + " Cr";
+    if(a >= 1e5) return "₹" + (n/1e5).toFixed(2) + " L";
+    return inrFull(n);
+  }
+  function intIN(n){ return Math.round(n).toLocaleString("en-IN"); }
+  /* Takes the raw ratio (tipped ÷ orders), not an already-scaled percentage. */
+  function pct1(v){ return (100 * v).toFixed(1) + "%"; }
+  function num(n){
+    var a = Math.abs(n);
+    if(a >= 1e7) return (n/1e7).toFixed(2) + " Cr";
+    if(a >= 1e5) return (n/1e5).toFixed(2) + " L";
+    if(a >= 1e3) return (n/1e3).toFixed(1) + "K";
+    return String(Math.round(n));
+  }
+  function pct(n, d){ return (d ? (100*n/d).toFixed(1) : "0.0") + "%"; }
+  function mLabel(m){
+    var p = m.split("-"), names=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return names[parseInt(p[1],10)-1] + " " + p[0].slice(2);
+  }
+
+  /* ---------- data shaping ---------- */
+  function visibleMonths(){ return MONTHS; }
+
+  function agg(month, cat){
+    var out = {};
+    Object.keys(F).forEach(function(k){ if(k!=="month" && k!=="cat") out[k]=0; });
+    ROWS.forEach(function(r){
+      if(r[0] !== month) return;
+      if(cat !== "all" && r[1] !== cat) return;
+      Object.keys(out).forEach(function(k){ out[k] += r[F[k]]; });
+    });
+    /* total_donation is ONLINE ONLY — offline_amount is a separate pool that is not
+       included in it, and offline_count is likewise separate from total_orders. The
+       two channels share no metrics beyond amount and count, so the dashboard keeps
+       them in separate sections rather than blending them. */
+    out.total = out.donation + out.offAmt;
+    return out;
+  }
+  function series(cat){ return visibleMonths().map(function(m){ return agg(m, cat); }); }
+  function allSeries(cat){ return MONTHS.map(function(m){ return agg(m, cat); }); }
+
+  function delta(cur, prev){
+    if(prev === 0 || prev == null || cur == null) return null;
+    return 100 * (cur - prev) / prev;
+  }
+  function deltaHtml(d, goodUp){
+    if(d === null || !isFinite(d)) return '<span class="dm-delta flat">—</span>';
+    var cls = Math.abs(d) < 0.5 ? "flat" : ((d > 0) === (goodUp !== false) ? "up" : "down");
+    var sign = d > 0 ? "+" : "";
+    return '<span class="dm-delta ' + cls + '">' + sign + d.toFixed(1) + '%</span>';
+  }
+
+  /* ---------- svg helpers ---------- */
+  var NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs){
+    var e = document.createElementNS(NS, tag);
+    for(var k in attrs) if(attrs[k] !== null && attrs[k] !== undefined) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+  /* CSS variables are not honoured in SVG presentation attributes, only in style
+     declarations — so every mark carries its color via style:, which means a theme
+     flip repaints without a re-render. */
+  function cssv(name){ return "var(" + name + ")"; }
+  function fillS(name){ return "fill:" + cssv(name); }
+  function strokeS(name, w){ return "stroke:" + cssv(name) + ";stroke-width:" + (w||1); }
+  /* A zoomed band around the data, snapped to clean tick steps. Tip attach moves
+     between roughly 49% and 61% — plotted from zero that reads as a flat line, and
+     the month-to-month movement is the whole point of these two charts. Both are
+     rates, not quantities, so a non-zero baseline is honest here; the axis labels
+     state the range. */
+  function niceStep(x){
+    var mag = Math.pow(10, Math.floor(Math.log10(x)));
+    var steps = [1, 2, 2.5, 5, 10];
+    for(var i=0;i<steps.length;i++){ if(steps[i]*mag >= x) return steps[i]*mag; }
+    return 10*mag;
+  }
+  function focusBand(values, maxTicks){
+    var lo = Math.min.apply(null, values), hi = Math.max.apply(null, values);
+    var span = (hi - lo) || Math.abs(hi) * 0.1 || 1;
+    var loP = Math.max(0, lo - span * 0.25), hiP = hi + span * 0.25;
+    var step = niceStep((hiP - loP) / (maxTicks || 4));
+    var min = Math.max(0, Math.floor(loP / step) * step);
+    var max = Math.ceil(hiP / step) * step;
+    var ticks = Math.round((max - min) / step);
+    /* Guard against a degenerate band collapsing the axis. */
+    if(!isFinite(ticks) || ticks < 1){ min = 0; max = hi || 1; ticks = 4; }
+    return {min:min, max:max, ticks:Math.min(6, ticks)};
+  }
+
+  function niceMax(v){
+    if(v <= 0) return 1;
+    var mag = Math.pow(10, Math.floor(Math.log10(v)));
+    var steps = [1,1.25,1.5,2,2.5,3,4,5,6,8,10];
+    for(var i=0;i<steps.length;i++){ if(steps[i]*mag >= v) return steps[i]*mag; }
+    return 10*mag;
+  }
+
+  var tip = document.getElementById("dmTip");
+  function showTip(evt, title, rows){
+    var html = "<b>" + title + "</b>";
+    rows.forEach(function(r){
+      html += '<div class="dm-tip-row"><span>' +
+              (r.color ? '<i style="background:' + r.color + '"></i>' : '') +
+              r.label + '</span><em>' + r.value + '</em></div>';
+    });
+    tip.innerHTML = html;
+    tip.style.opacity = 1;
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    var x = evt.clientX + 14, y = evt.clientY - h - 10;
+    if(x + w > window.innerWidth - 8) x = evt.clientX - w - 14;
+    if(y < 8) y = evt.clientY + 16;
+    tip.style.left = x + "px"; tip.style.top = y + "px";
+  }
+  function hideTip(){ tip.style.opacity = 0; }
+
+  /* axis + frame shared by the plot charts */
+  /* The viewBox is built at the host's actual pixel width, so one user unit is one
+     CSS pixel and nothing is scaled. Stretching a fixed viewBox to fill the column
+     distorts the text horizontally, which is what a shared "preserveAspectRatio:none"
+     was quietly doing. Charts re-render on resize to keep that mapping true. */
+  function hostWidth(host){
+    return Math.max(300, Math.round(host.clientWidth || host.parentNode.clientWidth || 640));
+  }
+  function frame(host, opts){
+    host.innerHTML = "";
+    var W = hostWidth(host), H = opts.height || 230;
+    var pad = {t:14, r:opts.padRight || 16, b:26, l:opts.padLeft || 52};
+    var svg = el("svg", {viewBox:"0 0 " + W + " " + H, class:"dm-svg",
+                         style:"height:" + H + "px"});
+    var iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    var ticks = opts.ticks || 4, max = opts.max, min = opts.min || 0;
+    /* Log axis for series spanning orders of magnitude — one gridline per power of
+       ten. Bounds arrive as log10 values so the largest series reaches the top. */
+    var isLog = !!opts.log, lgLo = opts.logLo, lgHi = opts.logHi;
+    var yFor = isLog
+      ? function(v){ return pad.t + ih - ih * ((Math.log10(Math.max(v, 1)) - lgLo) / (lgHi - lgLo)); }
+      : function(v){ return pad.t + ih - ih * ((v - min) / (max - min)); };
+    if(isLog){
+      for(var pw = Math.ceil(lgLo - 1e-9); pw <= Math.floor(lgHi + 1e-9); pw++){
+        var ly = yFor(Math.pow(10, pw));
+        svg.appendChild(el("line", {x1:pad.l, x2:W-pad.r, y1:ly, y2:ly,
+          style:strokeS(pw === Math.ceil(lgLo - 1e-9) ? "--axis" : "--grid", 1)}));
+        var lgt = el("text", {x:pad.l-8, y:ly+4, "text-anchor":"end", "font-size":10.5,
+          style:fillS("--ink-3") + ";font-variant-numeric:tabular-nums"});
+        lgt.textContent = opts.fmtAxis(Math.pow(10, pw));
+        svg.appendChild(lgt);
+      }
+    } else {
+      for(var i=0;i<=ticks;i++){
+        var val = min + (max - min) * i / ticks, y = pad.t + ih - ih * i / ticks;
+        svg.appendChild(el("line", {x1:pad.l, x2:W-pad.r, y1:y, y2:y,
+          style:strokeS(i===0 ? "--axis" : "--grid", 1)}));
+        var t = el("text", {x:pad.l-8, y:y+4, "text-anchor":"end",
+          "font-size":10.5, style:fillS("--ink-3") + ";font-variant-numeric:tabular-nums"});
+        t.textContent = opts.fmtAxis(val);
+        svg.appendChild(t);
+      }
+    }
+    return {svg:svg, W:W, H:H, pad:pad, iw:iw, ih:ih, max:max, min:min,
+            x:function(i,n){ return pad.l + (n<=1 ? iw/2 : iw * i / (n-1)); },
+            y:yFor,
+            mount:function(){ host.appendChild(svg); }};
+  }
+  function xLabels(f, months){
+    /* Tick density follows the plot width rather than a fixed rule — a half-width
+       card has room for about half as many "Aug 26" labels as a full-width one. */
+    var perLabel = 56;
+    var room = Math.max(2, Math.floor(f.iw / perLabel));
+    var step = Math.max(1, Math.ceil(months.length / room));
+    months.forEach(function(m, i){
+      if(i % step !== 0 && i !== months.length-1) return;
+      /* The end ticks anchor inward — centred on the axis ends they hang past the
+         drawing and paint outside the SVG box. */
+      var anchor = i === 0 ? "start" : (i === months.length-1 ? "end" : "middle");
+      var t = el("text", {x:f.pad.l + f.iw * (months.length<=1?0.5:i/(months.length-1)),
+        y:f.H-8, "text-anchor":anchor, "font-size":10.5, style:fillS("--ink-3")});
+      t.textContent = mLabel(m);
+      f.svg.appendChild(t);
+    });
+  }
+
+  /* multi-series line chart with crosshair */
+  function lineChart(host, months, seriesList, fmt, opts){
+    opts = opts || {};
+    /* A null value means "no data that month": it breaks the line instead of being
+       drawn as zero, which on a log axis would be meaningless anyway. */
+    var flat = seriesList.reduce(function(a,s){
+      return a.concat(s.values.filter(function(v){ return v != null && isFinite(v); }));
+    }, []);
+    var max = opts.max != null ? opts.max : niceMax(Math.max.apply(null, flat.concat([0])));
+    var logLo, logHi;
+    if(opts.log){
+      var pos = flat.filter(function(v){ return v > 0; });
+      logLo = Math.floor(Math.log10(Math.min.apply(null, pos)));
+      logHi = Math.log10(Math.max.apply(null, pos));
+      if(logHi - logLo < 1) logHi = logLo + 1;
+    }
+    /* padRight/padLeft have to reach frame() — without them every chart fell back to
+       the 16px default and the direct end-label ran past the card edge. */
+    var f = frame(host, {max:max, min:opts.min, ticks:opts.ticks,
+                         log:opts.log, logLo:logLo, logHi:logHi,
+                         fmtAxis:opts.fmtAxis || fmt, height:opts.height,
+                         padRight:opts.padRight, padLeft:opts.padLeft});
+    xLabels(f, months);
+    var n = months.length;
+
+    var cross = el("line", {y1:f.pad.t, y2:f.pad.t+f.ih, opacity:0, style:strokeS("--axis", 1)});
+    f.svg.appendChild(cross);
+
+    seriesList.forEach(function(s){
+      var d = "", pen = false;
+      s.values.forEach(function(v, i){
+        if(v == null || !isFinite(v) || (opts.log && v <= 0)){ pen = false; return; }
+        d += (pen ? "L" : "M") + f.x(i,n).toFixed(1) + " " + f.y(v).toFixed(1) + " ";
+        pen = true;
+      });
+      f.svg.appendChild(el("path", {d:d.trim(), "stroke-linejoin":"round", "stroke-linecap":"round",
+        style:"fill:none;" + strokeS(s.varname, s.width || 2)}));
+      /* A marker at every point where the reading is month-by-month rather than a
+         shape — opt-in, so the busier multi-series charts stay clean. */
+      if(opts.markers){
+        s.values.forEach(function(v, i){
+          if(v == null || !isFinite(v) || (opts.log && v <= 0)) return;
+          f.svg.appendChild(marker(s.shape || "circle", f.x(i,n), f.y(v), 3.2, s.varname));
+        });
+      }
+      /* End dot goes on the last month that actually has a value. */
+      var li = n-1;
+      while(li >= 0 && (s.values[li] == null || !isFinite(s.values[li]) ||
+                        (opts.log && s.values[li] <= 0))) li--;
+      if(li < 0) return;
+      /* 2px surface ring keeps the end-dot legible where lines cross */
+      f.svg.appendChild(el("circle", {cx:f.x(li,n), cy:f.y(s.values[li]), r:4.5,
+        style:fillS(s.varname) + ";" + strokeS("--surface-1", 2)}));
+    });
+
+    /* one direct end-label per series, nudged apart only if needed via leader-free stacking guard */
+    /* Optional average rule for a single-series chart. Its label sits at the LEFT end
+       of the rule: on both tip charts the mean lands within a point of the latest
+       value, so a right-edge label would sit on top of the direct end-label. */
+    if(opts.meanLine && seriesList.length === 1){
+      var mv = seriesList[0].values.filter(function(v){ return v != null && isFinite(v); });
+      var mean = mv.length ? mv.reduce(function(a,b){ return a+b; }, 0) / mv.length : 0;
+      var my = f.y(mean);
+      f.svg.appendChild(el("line", {x1:f.pad.l, x2:f.pad.l + f.iw, y1:my, y2:my,
+        style:strokeS("--ink-2", 1.5) + ";stroke-dasharray:4 4"}));
+      var above = my - 7 > f.pad.t + 9;
+      var mt = el("text", {x:f.pad.l + 4, y:my + (above ? -7 : 15), "font-size":10.5,
+        style:fillS("--ink-2") + ";font-weight:600;font-variant-numeric:tabular-nums"});
+      mt.textContent = "avg " + fmt(mean);
+      f.svg.appendChild(mt);
+    }
+
+    var ends = seriesList.map(function(s){
+        var li = n-1;
+        while(li >= 0 && (s.values[li] == null || !isFinite(s.values[li]) ||
+                          (opts.log && s.values[li] <= 0))) li--;
+        return li < 0 ? null : {label:fmt(s.values[li]), y:f.y(s.values[li])};
+      }).filter(Boolean)
+                         .sort(function(a,b){ return a.y-b.y; });
+    ends.forEach(function(e,i){
+      if(i>0 && e.y - ends[i-1].y < 13) e.y = ends[i-1].y + 13;
+      var t = el("text", {x:f.pad.l+f.iw+6, y:e.y+3.5, "font-size":10.5,
+        style:fillS("--ink-2") + ";font-variant-numeric:tabular-nums"});
+      t.textContent = e.label;
+      f.svg.appendChild(t);
+    });
+
+    var hit = el("rect", {x:f.pad.l, y:f.pad.t, width:f.iw, height:f.ih, fill:"transparent"});
+    hit.addEventListener("mousemove", function(evt){
+      var box = f.svg.getBoundingClientRect();
+      var rel = (evt.clientX - box.left) / box.width * f.W;
+      var i = Math.round((rel - f.pad.l) / (f.iw / Math.max(1,n-1)));
+      i = Math.max(0, Math.min(n-1, i));
+      cross.setAttribute("x1", f.x(i,n)); cross.setAttribute("x2", f.x(i,n)); cross.setAttribute("opacity", 1);
+      showTip(evt, mLabel(months[i]), seriesList.map(function(s){
+        var tv = s.values[i];
+        return {label:s.label,
+                value:(tv == null || !isFinite(tv)) ? "—" : fmt(tv),
+                color:cssv(s.varname)};
+      }));
+    });
+    hit.addEventListener("mouseleave", function(){ cross.setAttribute("opacity", 0); hideTip(); });
+    f.svg.appendChild(hit);
+    f.mount();
+  }
+
+  /* Monthly quantities as columns against their own mean. Above-average months carry
+     the accent, below-average recede to the de-emphasis grey, and a dashed rule marks
+     the average — so a month is judgeable, not just plotted. */
+  function columnsVsMean(host, months, values, fmt, opts){
+    opts = opts || {};
+    var mean = values.reduce(function(a,b){ return a+b; }, 0) / values.length;
+    var f = frame(host, {max:niceMax(Math.max.apply(null, values)),
+                         fmtAxis:opts.fmtAxis || fmt, height:opts.height || 200,
+                         padRight:opts.padRight || 72, padLeft:opts.padLeft});
+    xLabels(f, months);
+    var n = months.length, band = f.iw / n, bw = Math.min(24, band * 0.56);
+    var base = f.pad.t + f.ih;
+
+    months.forEach(function(m, i){
+      var val = values[i], cx = f.pad.l + band * (i + 0.5), y = f.y(val);
+      f.svg.appendChild(el("rect", {x:cx - bw/2, y:y, width:bw,
+        height:Math.max(1, base - y), rx:3,
+        style:fillS(val >= mean ? (opts.varname || "--online") : "--dim")}));
+
+      var hit = el("rect", {x:f.pad.l + band*i, y:f.pad.t, width:band, height:f.ih,
+        fill:"transparent"});
+      hit.addEventListener("mousemove", function(evt){
+        var d = mean ? 100*(val-mean)/mean : 0;
+        showTip(evt, mLabel(m), [
+          {label:opts.label || "Value", value:fmt(val)},
+          {label:"vs average", value:(d>0?"+":"") + d.toFixed(1) + "%"}
+        ]);
+      });
+      hit.addEventListener("mouseleave", hideTip);
+      f.svg.appendChild(hit);
+    });
+
+    f.svg.appendChild(el("line", {x1:f.pad.l, x2:f.pad.l + f.iw, y1:f.y(mean), y2:f.y(mean),
+      style:strokeS("--ink-2", 1.5) + ";stroke-dasharray:4 4"}));
+    var ml = el("text", {x:f.pad.l + f.iw + 8, y:f.y(mean) + 4, "font-size":10.5,
+      style:fillS("--ink-2") + ";font-weight:600;font-variant-numeric:tabular-nums"});
+    ml.textContent = "avg " + fmt(mean);
+    f.svg.appendChild(ml);
+    f.mount();
+  }
+
+  /* stacked columns, 2px surface gap between segments */
+  function stackChart(host, months, seriesList, fmt, opts){
+    opts = opts || {};
+    var totals = months.map(function(_, i){
+      return seriesList.reduce(function(a,s){ return a + s.values[i]; }, 0);
+    });
+    var max = niceMax(Math.max.apply(null, totals.concat([0])));
+    var f = frame(host, {max:max, fmtAxis:opts.fmtAxis || fmt, height:opts.height, padRight:14});
+    xLabels(f, months);
+    var n = months.length;
+    var band = f.iw / n;
+    var bw = Math.min(24, band * 0.62);
+
+    months.forEach(function(m, i){
+      var cx = f.pad.l + band * (i + 0.5);
+      var acc = 0;
+      var g = el("g", {});
+      seriesList.forEach(function(s){
+        var v = s.values[i];
+        if(v <= 0){ acc += v; return; }
+        var yTop = f.y(acc + v), yBot = f.y(acc);
+        var h = Math.max(0, yBot - yTop - 2); /* 2px surface gap */
+        if(h <= 0){ acc += v; return; }
+        g.appendChild(el("rect", {x:cx - bw/2, y:yTop, width:bw, height:h, rx:2.5,
+          style:fillS(s.varname)}));
+        acc += v;
+      });
+      var hit = el("rect", {x:f.pad.l + band*i, y:f.pad.t, width:band, height:f.ih, fill:"transparent"});
+      hit.addEventListener("mousemove", function(evt){
+        var rows = seriesList.map(function(s){
+          return {label:s.label, value:fmt(s.values[i]), color:cssv(s.varname)};
+        });
+        rows.push({label:"Total", value:fmt(totals[i])});
+        showTip(evt, mLabel(m), rows);
+      });
+      hit.addEventListener("mouseleave", hideTip);
+      g.appendChild(hit);
+      f.svg.appendChild(g);
+    });
+    f.mount();
+  }
+
+  /* Log-scale stage bars. Volume stays the encoded length, but on a log axis so a
+     40x range fits without the tail stages collapsing — each gridline is 10x the
+     one before. The right-hand columns carry what a funnel shape can't: the step
+     conversion, and the volume lost at that step. Bounds are derived from the data
+     rather than fixed, because a small category's last stage can be in the hundreds
+     while views are in the lakhs. */
+  function powLabel(p){
+    if(p >= 7) return (p === 7 ? "1 Cr" : Math.pow(10, p-7) + " Cr");
+    if(p >= 5) return (p === 5 ? "1 L" : Math.pow(10, p-5) + " L");
+    if(p >= 3) return Math.pow(10, p-3) + "K";
+    return String(Math.pow(10, p));
+  }
+  function funnelChart(host, stages){
+    host.innerHTML = "";
+    var W = hostWidth(host), rowH = 38, headH = 20, axisH = 22;
+    var H = stages.length * rowH + headH + axisH + 8;
+    var svg = el("svg", {viewBox:"0 0 " + W + " " + H, class:"dm-svg",
+                         style:"height:" + H + "px"});
+    /* Right-hand columns are pinned to the right edge and the bar track takes what is
+       left. Below ~460px there isn't room for full-size columns, so the type steps
+       down and the stage labels use their short forms rather than being clipped. */
+    var narrow = W < 460;
+    var fs = narrow ? 10 : 11.5;
+    var colLost = W, colConv = W - (narrow ? 48 : 88), colVol = colConv - (narrow ? 46 : 80);
+    var labelW = narrow ? 58 : 106;
+    /* The track stops well short of the Volume column — its figures are right-aligned
+       and run leftward, so a narrow gap lets the longest number sit on top of the
+       longest bar. */
+    var barX = labelW + 8, barW = Math.max(40, colVol - barX - (narrow ? 52 : 74));
+
+    var vals = stages.map(function(s){ return Math.max(1, s.value); });
+    /* Lower bound snaps to a power of ten so the shortest bar keeps some length;
+       the upper bound is the exact maximum so the longest bar reaches the axis end
+       rather than stopping short of a rounded-up decade. */
+    var lo = Math.floor(Math.log10(Math.min.apply(null, vals)));
+    var hi = Math.log10(Math.max.apply(null, vals));
+    if(hi - lo < 1) hi = lo + 1;
+    var X = function(val){
+      return barX + barW * (Math.log10(Math.max(1, val)) - lo) / (hi - lo);
+    };
+
+    /* column headers */
+    /* Abbreviated headers when narrow — at full size "VOLUME" and "OF PREV" would
+       run into each other in the tighter column grid. */
+    var heads = narrow ? [[colVol,"Vol"],[colConv,"Conv"],[colLost,"Lost"]]
+                       : [[colVol,"Volume"],[colConv,"of prev"],[colLost,"lost"]];
+    heads.forEach(function(c){
+      svg.appendChild((function(){
+        var t = el("text", {x:c[0], y:12, "text-anchor":"end", "font-size":narrow ? 8.5 : 9.5,
+          style:fillS("--ink-3") + ";letter-spacing:.05em"});
+        t.textContent = c[1].toUpperCase();
+        return t;
+      })());
+    });
+
+    /* log gridlines, one per power of ten */
+    var top = headH, bot = headH + stages.length * rowH;
+    for(var p = lo; p <= Math.floor(hi + 1e-9); p++){
+      var x = barX + barW * (p - lo) / (hi - lo);
+      svg.appendChild(el("line", {x1:x, x2:x, y1:top, y2:bot,
+        style:strokeS(p === lo ? "--axis" : "--grid", 1)}));
+      var tl = el("text", {x:x, y:bot + 14, "text-anchor":"middle", "font-size":10,
+        style:fillS("--ink-3")});
+      tl.textContent = powLabel(p);
+      svg.appendChild(tl);
+    }
+
+    /* worst step carries the emphasis colour; everything else stays on the ramp */
+    var worst = -1;
+    for(var i = 1; i < stages.length; i++){
+      if(stages[i].value <= stages[i-1].value &&
+         (worst < 0 || stages[i].value / stages[i-1].value <
+                       stages[worst].value / stages[worst-1].value)) worst = i;
+    }
+
+    stages.forEach(function(s, i){
+      var y = headH + i * rowH;
+      var isWorst = i === worst;
+
+      var lt = el("text", {x:labelW, y:y + rowH/2 + 4, "text-anchor":"end", "font-size":fs,
+        style:fillS(isWorst ? "--ink-1" : "--ink-2") + (isWorst ? ";font-weight:620" : "")});
+      lt.textContent = narrow && s.short ? s.short : s.label;
+      svg.appendChild(lt);
+
+      /* Every bar stays on the blue ramp — the worst step is marked by weight, in the
+         bold label and conversion figure, rather than by a colour that would read as
+         a separate series. */
+      var w = Math.max(2, X(s.value) - barX);
+      svg.appendChild(el("rect", {x:barX, y:y + rowH/2 - 9, width:w, height:18, rx:3,
+        style:fillS(ramp6(i))}));
+
+      var vt = el("text", {x:colVol, y:y + rowH/2 + 4, "text-anchor":"end", "font-size":fs,
+        "font-weight":620, style:fillS("--ink-1") + ";font-variant-numeric:tabular-nums"});
+      vt.textContent = narrow ? num(s.value) : Math.round(s.value).toLocaleString("en-IN");
+      svg.appendChild(vt);
+
+      if(i > 0){
+        var lost = stages[i-1].value - s.value;
+        var gained = lost < 0;
+
+        var ct = el("text", {x:colConv, y:y + rowH/2 + 4, "text-anchor":"end", "font-size":fs,
+          "font-weight":isWorst ? 700 : 500,
+          style:fillS(gained ? "--warn" : (isWorst ? "--ink-1" : "--ink-2")) +
+                ";font-variant-numeric:tabular-nums"});
+        ct.textContent = s.conv;
+        svg.appendChild(ct);
+
+        var lt2 = el("text", {x:colLost, y:y + rowH/2 + 4, "text-anchor":"end", "font-size":fs,
+          style:fillS(gained ? "--warn" : "--ink-3") + ";font-variant-numeric:tabular-nums"});
+        lt2.textContent = (gained ? "+" : "−") + num(Math.abs(lost));
+        svg.appendChild(lt2);
+      } else {
+        var et = el("text", {x:colConv, y:y + rowH/2 + 4, "text-anchor":"end", "font-size":fs - 0.5,
+          style:fillS("--ink-3")});
+        et.textContent = "entry";
+        svg.appendChild(et);
+      }
+
+      var hit = el("rect", {x:0, y:y, width:W, height:rowH, fill:"transparent"});
+      hit.addEventListener("mousemove", function(evt){
+        var rows = [
+          {label:"Volume", value:Math.round(s.value).toLocaleString("en-IN")},
+          {label:"From previous step", value:i ? s.conv : "—"},
+          {label:"From views", value:pct(s.value, stages[0].value)}
+        ];
+        if(i > 0){
+          var l = stages[i-1].value - s.value;
+          rows.push({label: l < 0 ? "Gained here" : "Lost here",
+                     value: Math.abs(l).toLocaleString("en-IN")});
+        }
+        showTip(evt, s.label, rows);
+      });
+      hit.addEventListener("mouseleave", hideTip);
+      svg.appendChild(hit);
+    });
+    host.appendChild(svg);
+  }
+  function ramp6(i){
+    return ["--f1","--f2","--f3","--f4","--f5","--f6"][Math.min(i, 5)];
+  }
+
+  /* Marker shapes double as the identity channel alongside hue, so the five steps
+     stay separable for a tritan viewer and in print. */
+  function marker(kind, cx, cy, r, varname){
+    /* Filled shapes take the series colour with a surface ring so they stay legible
+       where lines cross. The cross is a stroked mark, so it takes the series colour
+       on its stroke and no ring — building the style per shape rather than patching
+       one string, which silently produced a white cross. */
+    var filled = fillS(varname) + ";" + strokeS("--surface-1", 1.6);
+    if(kind === "square")
+      return el("rect", {x:cx-r, y:cy-r, width:2*r, height:2*r, rx:1, style:filled});
+    if(kind === "triangle")
+      return el("polygon", {points:[cx + "," + (cy-r*1.15), (cx+r*1.1) + "," + (cy+r*0.8),
+                                    (cx-r*1.1) + "," + (cy+r*0.8)].join(" "), style:filled});
+    if(kind === "diamond")
+      return el("polygon", {points:[cx + "," + (cy-r*1.3), (cx+r*1.2) + "," + cy,
+                                    cx + "," + (cy+r*1.3), (cx-r*1.2) + "," + cy].join(" "),
+                            style:filled});
+    if(kind === "cross")
+      return el("path", {d:"M" + (cx-r) + " " + (cy-r) + "L" + (cx+r) + " " + (cy+r) +
+                            "M" + (cx+r) + " " + (cy-r) + "L" + (cx-r) + " " + (cy+r),
+                         style:"fill:none;" + strokeS(varname, 2.4) + ";stroke-linecap:round"});
+    return el("circle", {cx:cx, cy:cy, r:r, style:filled});
+  }
+
+  /* Multi-series percentage chart: shared 0–max scale, a marker at every point, a
+     crosshair that reads all series at once, and one direct end-label per line. */
+  function stepChart(host, months, seriesList){
+    host.innerHTML = "";
+    var all = seriesList.reduce(function(a, s){ return a.concat(s.values); }, [0]);
+    var peak = Math.max.apply(null, all);
+    /* Percentage axis in clean quarters. A step can exceed 100% in this data, so the
+       ceiling steps up in 25-point increments rather than being rounded by niceMax,
+       which would produce ticks like 94% and 63%. */
+    var max = 100;
+    while(peak > max) max += 25;
+    var f = frame(host, {max:max, ticks:max/25, fmtAxis:function(v){ return v.toFixed(0) + "%"; },
+                         height:262, padRight:58, padLeft:44});
+    xLabels(f, months);
+    var n = months.length;
+
+    /* A step above 100% means that stage exceeded the one before it — real in this
+       data, so the scale makes room for it and a rule marks where 100% sits. */
+    if(max > 100){
+      f.svg.appendChild(el("line", {x1:f.pad.l, x2:f.pad.l + f.iw, y1:f.y(100), y2:f.y(100),
+        style:strokeS("--warn", 1) + ";stroke-dasharray:3 3"}));
+      /* Labelled at the left end — a series that ends near 100% would otherwise put
+         its own end-label on top of this one. */
+      var wl = el("text", {x:f.pad.l + 4, y:f.y(100) - 5, "font-size":9.5,
+        style:fillS("--warn") + ";font-weight:600"});
+      wl.textContent = "100%";
+      f.svg.appendChild(wl);
+    }
+
+    var cross = el("line", {y1:f.pad.t, y2:f.pad.t + f.ih, opacity:0, style:strokeS("--axis", 1)});
+    f.svg.appendChild(cross);
+
+    seriesList.forEach(function(s){
+      var d = s.values.map(function(v, i){
+        return (i ? "L" : "M") + f.x(i, n).toFixed(1) + " " + f.y(v).toFixed(1);
+      }).join(" ");
+      f.svg.appendChild(el("path", {d:d, "stroke-linejoin":"round", "stroke-linecap":"round",
+        style:"fill:none;" + strokeS(s.varname, 2)}));
+      s.values.forEach(function(v, i){
+        f.svg.appendChild(marker(s.shape, f.x(i, n), f.y(v), 3.6, s.varname));
+      });
+    });
+
+    var ends = seriesList.map(function(s){
+      return {label:s.values[n-1].toFixed(1) + "%", y:f.y(s.values[n-1])};
+    }).sort(function(a, b){ return a.y - b.y; });
+    ends.forEach(function(e, i){
+      if(i > 0 && e.y - ends[i-1].y < 13) e.y = ends[i-1].y + 13;
+      var t = el("text", {x:f.pad.l + f.iw + 8, y:e.y + 3.5, "font-size":10.5,
+        style:fillS("--ink-2") + ";font-variant-numeric:tabular-nums"});
+      t.textContent = e.label;
+      f.svg.appendChild(t);
+    });
+
+    var hit = el("rect", {x:f.pad.l, y:f.pad.t, width:f.iw, height:f.ih, fill:"transparent"});
+    hit.addEventListener("mousemove", function(evt){
+      var box = f.svg.getBoundingClientRect();
+      var rel = (evt.clientX - box.left) / box.width * f.W;
+      var i = Math.round((rel - f.pad.l) / (f.iw / Math.max(1, n-1)));
+      i = Math.max(0, Math.min(n-1, i));
+      cross.setAttribute("x1", f.x(i, n));
+      cross.setAttribute("x2", f.x(i, n));
+      cross.setAttribute("opacity", 1);
+      showTip(evt, mLabel(months[i]), seriesList.map(function(s){
+        return {label:s.label, value:s.values[i].toFixed(1) + "%", color:cssv(s.varname)};
+      }));
+    });
+    hit.addEventListener("mouseleave", function(){ cross.setAttribute("opacity", 0); hideTip(); });
+    f.svg.appendChild(hit);
+    f.mount();
+  }
+
+  function sparkline(values, varname){
+    var W = 86, H = 22, max = Math.max.apply(null, values), min = Math.min.apply(null, values);
+    var span = (max - min) || 1;
+    var pts = values.map(function(v,i){
+      return (i? "L":"M") + (W*i/(values.length-1)).toFixed(1) + " " + (H - 2 - (H-4)*(v-min)/span).toFixed(1);
+    }).join(" ");
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" style="overflow:visible">' +
+      '<path d="' + pts + '" fill="none" stroke="var(' + varname + ')" stroke-width="2" ' +
+      'stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/></svg>';
+  }
+
+  /* ---------- render ---------- */
+  function catLabel(k){
+    if(k === "all") return "All categories";
+    return CATS.filter(function(c){ return c.key === k; })[0].label;
+  }
+  function catVar(k){ return k === "all" ? "--online" : CATS.filter(function(c){return c.key===k;})[0].varname; }
+
+  function renderTiles(){
+    var host = document.getElementById("dmTiles");
+    var last = MONTHS[MONTHS.length-1], prev = MONTHS[MONTHS.length-2];
+    /* The All-categories total lives in the header only — these tiles are the
+       four categories, and clicking the selected one returns the page to All. */
+    host.innerHTML = CATS.map(function(c){
+      var cur = agg(last, c.key), pr = agg(prev, c.key);
+      var spark = allSeries(c.key).slice(-12).map(function(a){ return a.total; });
+      return '<button class="dm-tile" data-cat="' + c.key + '" aria-pressed="' + (state.cat===c.key) + '"' +
+        ' title="' + (state.cat===c.key ? "Clear filter — back to all categories" : "Filter the page to " + c.label) + '">' +
+        '<span class="dm-tile-key"><i class="dm-dot" style="background:var(' + c.varname + ')"></i>' +
+        '<span class="dm-tile-lbl">' + c.label + '</span></span>' +
+        '<div class="dm-tile-val">' + inr(cur.total) + '</div>' +
+        '<div class="dm-tile-foot">' + deltaHtml(delta(cur.total, pr.total)) +
+        sparkline(spark, c.varname) + '</div></button>';
+    }).join("");
+    Array.prototype.forEach.call(host.querySelectorAll(".dm-tile"), function(b){
+      b.addEventListener("click", function(){
+        state.cat = (state.cat === b.dataset.cat) ? "all" : b.dataset.cat;
+        render();
+      });
+    });
+  }
+
+  /* ---------- overview card ---------- */
+  /* Ratio metrics carry num/den rather than a single value, so a multi-month
+     baseline aggregates correctly (total donation ÷ total orders across the
+     window) instead of averaging twelve monthly ratios, which would weight a
+     quiet month the same as a peak one. */
+  var OV = [
+    {label:"Online Donation", get:function(a){ return a.donation; }, fmt:inr,     avg:true},
+    {label:"Online Orders",   get:function(a){ return a.orders; },   fmt:intIN,   avg:true},
+    {label:"Unique Donors",   get:function(a){ return a.donors; },   fmt:intIN,   avg:true},
+    {label:"Avg Ticket Size", num:function(a){ return a.donation; }, den:function(a){ return a.orders; }, fmt:inrFull},
+    {label:"Tip Revenue",     get:function(a){ return a.tip; },      fmt:inr2,    avg:true},
+    {label:"Tip Attach %",    num:function(a){ return a.tipped; },   den:function(a){ return a.orders; }, fmt:pct1}
+  ];
+
+  function ovValue(m, a){
+    if(m.get) return m.get(a);
+    var d = m.den(a);
+    return d ? m.num(a) / d : 0;
+  }
+  /* Baseline across a window: the mean month for a level metric, the pooled
+     ratio for a rate. */
+  function ovBaseline(m, aggs){
+    if(!aggs.length) return null;
+    if(m.get){
+      var s = aggs.reduce(function(t,a){ return t + m.get(a); }, 0);
+      return s / aggs.length;
+    }
+    var n = aggs.reduce(function(t,a){ return t + m.num(a); }, 0);
+    var d = aggs.reduce(function(t,a){ return t + m.den(a); }, 0);
+    return d ? n / d : null;
+  }
+  /* Colour only earns its place past ±1% — below that the move is noise and a
+     green number overstates it. */
+  function ovDelta(label, cur, base, baseNote){
+    var cls = "flat", txt = "—";
+    if(base && isFinite(base) && base !== 0){
+      var d = 100 * (cur - base) / base;
+      cls = Math.abs(d) < 1 ? "flat" : (d > 0 ? "up" : "down");
+      txt = (d > 0 ? "+" : "") + d.toFixed(1) + "%";
+    }
+    return '<div class="dm-ov-d"><span class="dm-ov-d-lbl">' + label + '</span>' +
+           '<span class="dm-ov-d-val ' + cls + '">' + txt + '</span>' +
+           (baseNote ? '<span class="dm-ov-d-base">' + baseNote + '</span>' : '') + '</div>';
+  }
+
+  function renderOverview(){
+    var lastI = MONTHS.length - 1;
+    var cur   = agg(MONTHS[lastI], state.cat);
+    var prev  = agg(MONTHS[lastI-1], state.cat);
+    /* Trailing twelve months ending the month before this one. */
+    var t12 = MONTHS.slice(Math.max(0, lastI-12), lastI).map(function(m){ return agg(m, state.cat); });
+    var yoyI = lastI - 12;
+    var yoy = yoyI >= 0 ? agg(MONTHS[yoyI], state.cat) : null;
+    /* Current month leads, then back in time. */
+    var strip = MONTHS.slice(-3).reverse();
+
+    document.getElementById("dmOvT").textContent = "Online performance — " + mLabel(MONTHS[lastI]);
+    document.getElementById("dmOvD").textContent =
+      catLabel(state.cat) + ". Money, orders, donors and tips for the latest online month, against " +
+      (yoy ? "three baselines" : "two baselines") + ": the previous month, the 12-month average (" +
+      mLabel(MONTHS[Math.max(0, lastI-12)]) + " – " + mLabel(MONTHS[lastI-1]) + ")" +
+      (yoy ? ", and the same month last year (" + mLabel(MONTHS[yoyI]) + ")." : ".");
+
+    document.getElementById("dmOverview").innerHTML = OV.map(function(m){
+      var v = ovValue(m, cur);
+      var stripHtml = strip.map(function(mo, i){
+        return '<div class="dm-ov-m' + (i === 0 ? " is-now" : "") + '">' +
+          '<span class="dm-ov-m-lbl">' + mLabel(mo) + '</span>' +
+          '<span class="dm-ov-m-val">' + m.fmt(ovValue(m, agg(mo, state.cat))) + '</span></div>';
+      }).join("");
+      var b12 = ovBaseline(m, t12);
+      return '<div class="dm-ov-cell">' +
+        '<p class="dm-ov-lbl">' + m.label + '</p>' +
+        '<div class="dm-ov-val">' + m.fmt(v) + '</div>' +
+        '<div class="dm-ov-strip">' + stripHtml + '</div>' +
+        ovDelta("MoM",  v, ovValue(m, prev)) +
+        ovDelta("12mo", v, b12, b12 ? m.fmt(b12) : "") +
+        ovDelta("YoY",  v, yoy ? ovValue(m, yoy) : null) +
+        '</div>';
+    }).join("");
+  }
+
+  function kpi(label, value, sub){
+    return '<div class="dm-kpi"><p class="dm-kpi-lbl">' + label + '</p>' +
+      '<div class="dm-kpi-val">' + value + '</div>' +
+      (sub ? '<div class="dm-kpi-sub">' + sub + '</div>' : '') + '</div>';
+  }
+
+  function render(){
+    var months = visibleMonths();
+    var data = series(state.cat);
+    var last = data[data.length-1], prev = data[data.length-2];
+    var lastM = months[months.length-1];
+    var yoyIdx = MONTHS.indexOf(lastM) - 12;
+    var yoy = yoyIdx >= 0 ? agg(MONTHS[yoyIdx], state.cat) : null;
+
+    document.getElementById("dmSub").textContent =
+      catLabel(state.cat) + " · " + mLabel(months[0]) + " – " + mLabel(lastM) +
+      " · source: demand_monthly_summary";
+
+    /* The header is the way back to All categories. It only becomes a control once a
+       filter is on, so it never looks clickable when clicking would do nothing. */
+    var filtered = state.cat !== "all";
+    var hero = document.getElementById("dmHero");
+    hero.classList.toggle("is-filtered", filtered);
+    hero.setAttribute("role", filtered ? "button" : "presentation");
+    if(filtered){
+      hero.setAttribute("tabindex", "0");
+      hero.setAttribute("aria-label", "Back to all categories");
+    } else {
+      hero.removeAttribute("tabindex");
+      hero.removeAttribute("aria-label");
+    }
+    document.getElementById("dmBack").hidden = !filtered;
+
+    renderTiles();
+    renderOverview();
+
+    /* hero */
+    /* Hero and tiles are the whole pool: online + offline. The split into online
+       and offline lives in the sections below. */
+    document.getElementById("dmHeroLbl").textContent = "Total donation — " + mLabel(lastM) + ", " + catLabel(state.cat);
+    document.getElementById("dmHeroVal").textContent = inr(last.total);
+    document.getElementById("dmHeroNote").innerHTML =
+      inrFull(last.total) + " · " + deltaHtml(delta(last.total, prev.total)) + " vs " + mLabel(months[months.length-2]) +
+      (yoy ? " · " + deltaHtml(delta(last.total, yoy.total)) + " vs " + mLabel(MONTHS[yoyIdx]) : "") +
+      '<span class="dm-hero-split">' + inr(last.donation) + " online + " + inr(last.offAmt) + " offline</span>";
+
+    /* offline payments — a separate pool from everything else on the page */
+    var offAsv  = function(d){ return d.offCnt ? d.offAmt/d.offCnt : 0; };
+    /* The one well-defined cross-channel figure: offline as a share of all money
+       raised. Everything else stays channel-specific. */
+    var offOfAll = last.total ? 100*last.offAmt/last.total : 0;
+    var offOfAllPrev = prev.total ? 100*prev.offAmt/prev.total : 0;
+    document.getElementById("dmOffKpis").innerHTML =
+      kpi("Offline donation", inr(last.offAmt), deltaHtml(delta(last.offAmt, prev.offAmt)) + " MoM") +
+      kpi("Offline orders", num(last.offCnt), deltaHtml(delta(last.offCnt, prev.offCnt)) + " MoM") +
+      kpi("Offline avg value", inrFull(offAsv(last)), "per offline order") +
+      kpi("QR share of offline", pct(last.qr, last.offAmt), inr(last.qr)) +
+      kpi("Offline share of all donation", offOfAll.toFixed(1) + "%",
+          (offOfAll - offOfAllPrev >= 0 ? "+" : "") + (offOfAll - offOfAllPrev).toFixed(1) +
+          " pts MoM \u00b7 of " + inr(last.total));
+
+    columnsVsMean(document.getElementById("dmOffAmt"), months,
+      data.map(function(d){ return d.offAmt; }), inr,
+      {label:"Offline donation", varname:"--offline", height:200, padRight:98});
+
+    stackChart(document.getElementById("dmOffMix"), months, [
+      {label:"QR",            varname:"--s1", values:data.map(function(d){ return d.qr; })},
+      {label:"Bank transfer", varname:"--s2", values:data.map(function(d){ return d.bt; })},
+      {label:"Coupon",        varname:"--s3", values:data.map(function(d){ return d.cp; })}
+    ], inr, {height:200});
+
+    lineChart(document.getElementById("dmOffCnt"), months, [
+      {label:"Offline orders", varname:"--offline",
+       values:data.map(function(d){ return d.offCnt; })}
+    ], num, {height:200, padRight:56, markers:true});
+
+    /* Per-mode average value spans two-plus orders of magnitude — QR runs in the
+       tens of rupees while bank transfer and coupon run in the tens of thousands —
+       so this is the one chart on the page that needs a log axis. A mode with no
+       orders in a month is a gap, not a zero. */
+    var ASV = [
+      {label:"QR",            varname:"--s1",      shape:"circle",   n:"qr", c:"qrCnt"},
+      {label:"Bank transfer", varname:"--s2",      shape:"square",   n:"bt", c:"btCnt"},
+      {label:"Coupon",        varname:"--s3",      shape:"triangle", n:"cp", c:"cpCnt"},
+      {label:"All offline",   varname:"--ink-1",   shape:"diamond",  n:"offAmt", c:"offCnt", width:2.6}
+    ];
+    var asvSeries = ASV.map(function(m){
+      return {label:m.label, varname:m.varname, shape:m.shape, width:m.width,
+              values:data.map(function(d){ return d[m.c] ? d[m.n]/d[m.c] : null; })};
+    });
+    lineChart(document.getElementById("dmOffAsv"), months, asvSeries,
+      function(v){ return "₹" + Math.round(v).toLocaleString("en-IN"); },
+      {height:230, padRight:78, markers:true, log:true});
+    var asvLeg = document.getElementById("dmAsvLeg");
+    asvLeg.innerHTML = "";
+    ASV.forEach(function(m){
+      var w = document.createElement("span"); w.className = "dm-leg";
+      var k = el("svg", {viewBox:"0 0 26 12", width:26, height:12, style:"flex:none;overflow:visible"});
+      k.appendChild(el("line", {x1:1, x2:25, y1:6, y2:6, style:strokeS(m.varname, m.width || 2)}));
+      k.appendChild(marker(m.shape, 13, 6, 3.6, m.varname));
+      w.appendChild(k); w.appendChild(document.createTextNode(m.label));
+      asvLeg.appendChild(w);
+    });
+
+    /* money */
+    var aov = function(d){ return d.orders ? d.donation/d.orders : 0; };
+
+    columnsVsMean(document.getElementById("dmAov"), months, data.map(aov), inrFull,
+      {label:"Average order value", varname:"--online", height:200, padRight:76});
+
+    lineChart(document.getElementById("dmOrders"), months, [
+      {label:"Orders",        varname:"--online",  values:data.map(function(d){ return d.orders; })},
+      {label:"Unique donors", varname:"--offline", values:data.map(function(d){ return d.donors; })}
+    ], num, {height:200, padRight:50});
+
+    /* Tip revenue is orders × attach rate × average tip. Order volume already has its
+       own chart above, so these two carry the rest — attach says how many tipped,
+       average tip says how much they gave. Together they explain a move in tip revenue
+       that the raw total only reports. */
+    var attachVals = data.map(function(d){ return d.orders ? 100*d.tipped/d.orders : 0; });
+    var ab = focusBand(attachVals, 3);
+    lineChart(document.getElementById("dmTipRate"), months, [
+      {label:"Attach rate", varname:"--s3", shape:"circle", values:attachVals}
+    ], function(v){ return v.toFixed(0) + "%"; },
+       {height:200, padRight:56, min:ab.min, max:ab.max, ticks:ab.ticks,
+        markers:true, meanLine:true});
+
+    /* Replaces the old all-categories stack, which ignored the category filter and so
+       stayed identical whichever tile was selected. Tip revenue responds to the filter
+       like the rest of the section, and pairs with the tip rate chart beside it. */
+    var avgTipVals = data.map(function(d){ return d.tipped ? d.tip/d.tipped : 0; });
+    var tb = focusBand(avgTipVals, 4);
+    lineChart(document.getElementById("dmAvgTip"), months, [
+      {label:"Average tip", varname:"--offline", shape:"circle", values:avgTipVals}
+    ], function(v){ return "₹" + Math.round(v); },
+       {height:200, padRight:56, min:tb.min, max:tb.max, ticks:tb.ticks,
+        markers:true, meanLine:true});
+
+    /* funnel */
+    document.getElementById("dmFunT").textContent = "Stage volumes — " + mLabel(lastM);
+    var stages = [
+      {label:"Campaign views",   short:"Views",     value:last.views},
+      {label:"Unique visitors",  short:"Visitors",  value:last.visitors},
+      {label:"Contri initiated", short:"Initiated", value:last.init},
+      {label:"Cart created",     short:"Cart",      value:last.cart},
+      {label:"Order created",    short:"Created",   value:last.ordcr},
+      {label:"Orders placed",    short:"Placed",    value:last.orders}
+    ];
+    stages.forEach(function(s,i){
+      s.conv = i ? pct(s.value, stages[i-1].value) : "";
+    });
+    funnelChart(document.getElementById("dmFunnel"), stages);
+
+    /* The subtitle stays minimal; a stage that exceeds the one above it is the only
+       thing worth calling out there, and the amber figure in the chart says the rest. */
+    var bulges = stages.filter(function(s,i){ return i > 0 && s.value > stages[i-1].value; });
+    document.getElementById("dmFunD").textContent = "Views through to orders." +
+      (bulges.length
+        ? " " + bulges.map(function(s){ return s.label; }).join(" and ") +
+          " exceeds the stage above it this month, shown in amber as a gain."
+        : "");
+
+    /* The three checkout steps only. Views → visitors and visitors → initiated were
+       dropped here to keep the chart readable; their conversions still appear in the
+       stage volumes card above, in the "of prev" column. */
+    var STEPS = [
+      {label:"Initiated → cart",       varname:"--s1", shape:"circle",
+       num:function(d){ return d.cart; },   den:function(d){ return d.init; }},
+      {label:"Cart → order created",   varname:"--s2", shape:"square",
+       num:function(d){ return d.ordcr; },  den:function(d){ return d.cart; }},
+      {label:"Order created → placed", varname:"--s3", shape:"triangle",
+       num:function(d){ return d.orders; }, den:function(d){ return d.ordcr; }}
+    ];
+    var stepSeries = STEPS.map(function(s){
+      return {label:s.label, varname:s.varname, shape:s.shape,
+              values:data.map(function(d){
+                var den = s.den(d);
+                return den ? 100 * s.num(d) / den : 0;
+              })};
+    });
+    stepChart(document.getElementById("dmSteps"), months, stepSeries);
+    /* The legend key repeats the line's colour AND its marker shape, so identity
+       never rests on hue alone. */
+    var leg = document.getElementById("dmStepLeg");
+    leg.innerHTML = "";
+    STEPS.forEach(function(s){
+      var wrap = document.createElement("span");
+      wrap.className = "dm-leg";
+      var key = el("svg", {viewBox:"0 0 26 12", width:26, height:12,
+                           style:"flex:none;overflow:visible"});
+      key.appendChild(el("line", {x1:1, x2:25, y1:6, y2:6, style:strokeS(s.varname, 2)}));
+      key.appendChild(marker(s.shape, 13, 6, 3.6, s.varname));
+      wrap.appendChild(key);
+      wrap.appendChild(document.createTextNode(s.label));
+      leg.appendChild(wrap);
+    });
+
+    /* supply */
+    document.getElementById("dmSupKpis").innerHTML =
+      kpi("Campaigns live", num(last.live), deltaHtml(delta(last.live, prev.live)) + " MoM") +
+      kpi("Campaigns approved", num(last.appr), "newly added") +
+      kpi("Campaigns raised", num(last.raised), pct(last.raised, last.live) + " of live") +
+      kpi("Avg days live", last.live ? (last.days/last.live).toFixed(1) : "0", "per campaign");
+
+    /* Both series share one axis rather than getting a second scale — approved is a
+       genuine fraction of live, and that relationship is the point. */
+    lineChart(document.getElementById("dmLive"), months, [
+      {label:"Live",     varname:"--s1", values:data.map(function(d){ return d.live; })},
+      {label:"Approved", varname:"--s2", values:data.map(function(d){ return d.appr; })}
+    ], num, {height:230, padRight:52});
+  }
+
+  function clearCategory(){
+    if(state.cat === "all") return;
+    state.cat = "all";
+    render();
+    document.getElementById("dmHero").scrollIntoView({block:"start", behavior:"smooth"});
+  }
+  document.getElementById("dmBack").addEventListener("click", function(evt){
+    evt.stopPropagation();
+    clearCategory();
+  });
+  /* The header doubles as "back to all categories", so any control that lives
+     inside it must not also trigger that. Checking for an interactive ancestor
+     covers the buttons already there and anything added later. */
+  document.getElementById("dmHero").addEventListener("click", function(evt){
+    if(evt.target.closest("button, a, input, select, textarea")) return;
+    clearCategory();
+  });
+  document.getElementById("dmHero").addEventListener("keydown", function(evt){
+    /* Only acts as a control while filtered, which is when it carries role=button. */
+    if(state.cat === "all") return;
+    if(evt.key === "Enter" || evt.key === " "){ evt.preventDefault(); clearCategory(); }
+  });
+
+  /* Charts are drawn at the container's pixel width, so a resize needs a redraw —
+     debounced, because resize fires continuously while dragging. */
+  var resizeTimer = null;
+  window.addEventListener("resize", function(){
+    hideTip();
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(render, 140);
+  });
+  render();
+
+  /* Live reload hook. live.js hands over fresher rows in the same
+     [month, cat, ...] shape and the page redraws in place — the selected
+     category and scroll position survive, so a refresh under the reader's eyes
+     changes the numbers and nothing else. Unused when the page runs off its
+     inlined snapshot. */
+  /* Name the snapshot's date where one is known, so "Saved snapshot" is a fact
+     the reader can act on rather than a shrug. live.js overwrites this the
+     moment a live read lands. */
+  (function(){
+    var at = window.DEMAND_SNAPSHOT_AT, el = document.getElementById("dmStatusTxt");
+    if(!at || !el) return;
+    var d = new Date(at + "T00:00:00");
+    if(isNaN(d)) return;
+    el.textContent = "Saved snapshot — exported " + d.getDate() + " " +
+      d.toLocaleString([], {month:"short"}) + " " + d.getFullYear();
+  })();
+
+  window.DEMAND_REFRESH = function(rows){
+    if(!rows || !rows.length) return false;
+    /* A malformed payload must not blank a working page, and must not poison it
+       with NaN either: check the shape, then coerce every numeric cell. A null
+       or a string where a number belongs becomes 0 rather than propagating
+       through every chart. */
+    var ok = rows.every(function(r){
+      return Array.isArray(r) && r.length >= 24 &&
+             typeof r[0] === "string" && /^\d{4}-\d{2}$/.test(r[0]) &&
+             typeof r[1] === "string" && r[1];
+    });
+    if(!ok) return false;
+
+    var next = rows.map(function(r){
+      return r.map(function(v, i){
+        if(i < 2) return v;
+        var n = Number(v);
+        return isFinite(n) ? n : 0;
+      });
+    });
+    var nextMonths = Array.from(new Set(next.map(function(r){ return r[0]; }))).sort();
+    /* Every month-on-month figure needs a previous month to compare against. */
+    if(nextMonths.length < 2) return false;
+
+    /* Swap atomically. If anything in render() objects to the new data, put the
+       old data back and redraw it — a failed refresh leaves the page exactly as
+       it was, never half-redrawn. */
+    var prevRows = ROWS, prevMonths = MONTHS;
+    ROWS = next;
+    MONTHS = nextMonths;
+    hideTip();
+    try {
+      render();
+    } catch(err) {
+      ROWS = prevRows;
+      MONTHS = prevMonths;
+      try { render(); } catch(e){}
+      if(window.console) console.error("[demand] refresh rejected, kept previous data:", err);
+      return false;
+    }
+    return true;
+  };
+})();
+</script>
