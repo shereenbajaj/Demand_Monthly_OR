@@ -70,6 +70,7 @@
     inFlight = true;
     el.btn.disabled = true;
     setState("loading", lastOk ? "Refreshing…" : "Loading live data…");
+    if (!lastOk && window.DEMAND_BOOT) window.DEMAND_BOOT("loading");
 
     fetch(API, { cache: "no-store", headers: { Accept: "application/json" } })
       .then(function (r) {
@@ -91,10 +92,15 @@
       })
       .catch(function (err) {
         console.warn("[demand] live read failed:", err.message);
-        /* Never blank the page. Say which version is on screen. */
-        setState("stale", lastOk
-          ? "Last updated " + clock(new Date(lastOk)) + " — refresh failed"
-          : "Showing snapshot — live read unavailable");
+        if (lastOk) {
+          /* Data is on screen and still correct as of lastOk — say so and keep it. */
+          setState("stale", "Last updated " + clock(new Date(lastOk)) + " — refresh failed");
+        } else {
+          /* Nothing has ever loaded. The page has no data of its own to fall back
+             on, so the boot panel carries the message rather than a bare page. */
+          setState("stale", "No data loaded");
+          if (window.DEMAND_BOOT) window.DEMAND_BOOT("error", err.message);
+        }
       })
       .then(function () {
         inFlight = false;
@@ -105,6 +111,8 @@
   /* --- triggers ------------------------------------------------------- */
 
   el.btn.addEventListener("click", function () { load("manual"); });
+  var bootBtn = document.getElementById("dmBootBtn");
+  if (bootBtn) bootBtn.addEventListener("click", function () { load("manual"); });
 
   function startPolling() {
     clearInterval(timer);

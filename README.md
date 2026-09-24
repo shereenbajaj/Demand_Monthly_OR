@@ -44,19 +44,23 @@ Two further caveats, also stated in the note at the bottom of the page:
 | --- | --- |
 | `index.html` | The deployable page. Contains all markup, CSS and chart code. |
 | `src-dashboard-body.html` | The source fragment `index.html` is assembled from. Edit this, not `index.html`. |
-| `demand-data.js` | Snapshot of the table. The fallback the page renders if the live read fails. |
 | `api/demand.js` | Serverless function that reads Supabase and returns the rows. |
 | `live.js` | Browser side: fetches `/api/demand`, listens for change pings, redraws. |
 | `realtime-setup.sql` | One-time setup for push notifications. Optional. |
 
-No service key is in this repo. The only Supabase credential in the source is the
+**No figures are stored in this repo.** The page ships with no data at all — every
+number it shows is fetched at runtime through `/api/demand`. Nothing in these files
+reveals donation volumes.
+
+No service key is here either. The only Supabase credential in the source is the
 **publishable** key in `live.js`, which can do exactly one thing: join a notification
 channel. It cannot read `demand_monthly_summary` — that table has RLS on with no
 policies, and only the serverless function, holding the service key, can read it.
 
 ## Live data
 
-Three layers, each a fallback for the one above:
+Two mechanisms. There is no bundled fallback — if the fetch fails the page says so
+plainly and offers a retry, rather than showing figures that may be months out of date:
 
 1. **Push.** A Postgres trigger broadcasts a bare "the table changed" ping on a Realtime
    channel. The page hears it and re-fetches. The ping carries a timestamp and no row
@@ -64,8 +68,9 @@ Three layers, each a fallback for the one above:
 2. **Fetch.** The page calls `/api/demand` on load, every 5 minutes while the tab is
    visible, whenever the tab regains focus, and when the Refresh button is clicked. This
    is the only path that carries actual numbers.
-3. **Snapshot.** If the fetch fails, the page renders `demand-data.js` and the header says
-   "Showing snapshot — live read unavailable" rather than going blank or showing zeros.
+If nothing has loaded yet, the page shows "Couldn't load demand data" with the actual
+error and a **Try again** button. If data is already on screen and a later refresh
+fails, it keeps that data and the status line says when it was last current.
 
 The status line under the title always says which of these you are looking at.
 
@@ -110,17 +115,14 @@ leave build command and output directory empty.
   echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
   echo '<meta name="viewport" content="width=device-width, initial-scale=1">'
   echo '<title>Demand — monthly</title></head><body>'
-  echo '<script src="./demand-data.js"></script>'
   cat src-dashboard-body.html
   echo '<script type="module" src="./live.js"></script>'
   echo '</body></html>'
 } > index.html
 ```
 
-## Refreshing the snapshot
+## The column contract
 
-The snapshot only matters when the live read fails, so it rarely needs touching. To
-refresh it, re-export `demand_monthly_summary` into `demand-data.js` keeping the existing
-column order — documented in the comment at the top of that file, and duplicated in
-`api/demand.js`. The two must stay in step: the page indexes into these arrays by
-position.
+`api/demand.js` returns each row as a plain array, and the page indexes into it by
+position. The `COLS` list in that file is the contract — reordering it silently
+mislabels every chart. Add new columns at the end.

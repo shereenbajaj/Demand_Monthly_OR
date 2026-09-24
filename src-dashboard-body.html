@@ -83,6 +83,11 @@
 
   .dm-hero{background:var(--surface-1);border:1px solid var(--hair);border-radius:12px;
     padding:18px 20px 20px;margin-bottom:12px}
+  .dm-boot{display:none;padding:56px 20px;text-align:center}
+  .dm-boot-t{font-size:16px;font-weight:600;color:var(--ink-1);margin:0 0 6px}
+  .dm-boot-d{font-size:13px;color:var(--ink-2);margin:0 0 16px}
+  .dm-root.is-empty .dm-boot{display:block}
+  .dm-root.is-empty > .dm-wrap > *:not(.dm-boot){display:none}
   .dm-hero-lbl{font-size:12px;color:var(--ink-2);margin:0 0 4px}
   .dm-hero-val{font-size:48px;font-weight:650;letter-spacing:-0.03em;line-height:1.05;margin:0}
   .dm-hero-note{font-size:12.5px;color:var(--ink-2);margin:8px 0 0}
@@ -147,6 +152,15 @@
 
 <div class="dm-root">
 <div class="dm-wrap">
+
+  <!-- Shown until live data arrives. The page ships with no data of its own, so
+       this, not a stale snapshot, is what an empty or failed load looks like. -->
+  <div class="dm-boot" id="dmBoot">
+    <p class="dm-boot-t" id="dmBootT">Loading demand data…</p>
+    <p class="dm-boot-d" id="dmBootD">Reading demand_monthly_summary.</p>
+    <button class="dm-refresh" id="dmBootBtn" type="button" hidden>Try again</button>
+  </div>
+
 
   <header class="dm-hero" id="dmHero">
     <div class="dm-hero-top">
@@ -368,7 +382,6 @@
     return out;
   }
   function series(cat){ return visibleMonths().map(function(m){ return agg(m, cat); }); }
-  function allSeries(cat){ return MONTHS.map(function(m){ return agg(m, cat); }); }
 
   function delta(cur, prev){
     if(prev === 0 || prev == null || cur == null) return null;
@@ -936,17 +949,6 @@
     f.mount();
   }
 
-  function sparkline(values, varname){
-    var W = 86, H = 22, max = Math.max.apply(null, values), min = Math.min.apply(null, values);
-    var span = (max - min) || 1;
-    var pts = values.map(function(v,i){
-      return (i? "L":"M") + (W*i/(values.length-1)).toFixed(1) + " " + (H - 2 - (H-4)*(v-min)/span).toFixed(1);
-    }).join(" ");
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" style="overflow:visible">' +
-      '<path d="' + pts + '" fill="none" stroke="var(' + varname + ')" stroke-width="2" ' +
-      'stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/></svg>';
-  }
-
   /* ---------- render ---------- */
   function catLabel(k){
     if(k === "all") return "All categories";
@@ -961,14 +963,13 @@
        four categories, and clicking the selected one returns the page to All. */
     host.innerHTML = CATS.map(function(c){
       var cur = agg(last, c.key), pr = agg(prev, c.key);
-      var spark = allSeries(c.key).slice(-12).map(function(a){ return a.total; });
       return '<button class="dm-tile" data-cat="' + c.key + '" aria-pressed="' + (state.cat===c.key) + '"' +
         ' title="' + (state.cat===c.key ? "Clear filter — back to all categories" : "Filter the page to " + c.label) + '">' +
         '<span class="dm-tile-key"><i class="dm-dot" style="background:var(' + c.varname + ')"></i>' +
         '<span class="dm-tile-lbl">' + c.label + '</span></span>' +
         '<div class="dm-tile-val">' + inr(cur.total) + '</div>' +
         '<div class="dm-tile-foot">' + deltaHtml(delta(cur.total, pr.total)) +
-        sparkline(spark, c.varname) + '</div></button>';
+        '</div></button>';
     }).join("");
     Array.prototype.forEach.call(host.querySelectorAll(".dm-tile"), function(b){
       b.addEventListener("click", function(){
@@ -1309,7 +1310,29 @@
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(render, 140);
   });
-  render();
+  /* With no bundled snapshot, the first paint has nothing to draw. Show the boot
+     panel and wait for live.js rather than running render() against an empty
+     table, which would divide by zero in a dozen places. */
+  function hasData(){ return MONTHS.length >= 2; }
+  function setEmpty(on){
+    document.querySelector(".dm-root").classList.toggle("is-empty", on);
+  }
+  window.DEMAND_BOOT = function(state, msg){
+    var t = document.getElementById("dmBootT"), d = document.getElementById("dmBootD"),
+        b = document.getElementById("dmBootBtn");
+    if(!t) return;
+    if(state === "error"){
+      t.textContent = "Couldn't load demand data";
+      d.textContent = msg || "The live read failed.";
+      b.hidden = false;
+    } else {
+      t.textContent = "Loading demand data…";
+      d.textContent = "Reading demand_monthly_summary.";
+      b.hidden = true;
+    }
+  };
+
+  if(hasData()) render(); else setEmpty(true);
 
   /* Live reload hook. live.js hands over fresher rows in the same
      [month, cat, ...] shape and the page redraws in place — the selected
@@ -1361,6 +1384,7 @@
     hideTip();
     try {
       render();
+      setEmpty(false);
     } catch(err) {
       ROWS = prevRows;
       MONTHS = prevMonths;
