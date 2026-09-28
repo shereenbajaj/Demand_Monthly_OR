@@ -45,8 +45,29 @@ Two further caveats, also stated in the note at the bottom of the page:
 | `index.html` | The deployable page. Contains all markup, CSS and chart code. |
 | `src-dashboard-body.html` | The source fragment `index.html` is assembled from. Edit this, not `index.html`. |
 | `api/demand.js` | Serverless function that reads Supabase and returns the rows. |
-| `live.js` | Browser side: fetches `/api/demand`, listens for change pings, redraws. |
+| `live.js` | Browser side: Google sign-in, fetches `/api/demand`, listens for change pings, redraws. |
 | `realtime-setup.sql` | One-time setup for push notifications. Optional. |
+
+## Access
+
+The dashboard is behind Google sign-in. Only addresses listed in the
+`ALLOWED_EMAILS` environment variable can see it.
+
+The check lives in `api/demand.js`, not in the page. The sign-in screen is a
+convenience; the server refusing unauthorised requests is the actual control, so
+nobody can skip it by calling `/api/demand` directly. An unset or empty
+`ALLOWED_EMAILS` **denies everyone** rather than admitting everyone — a missing
+variable can never silently open the dashboard.
+
+### Adding or removing someone
+
+Vercel → Settings → Environment Variables → `ALLOWED_EMAILS`, comma-separated:
+
+```
+alice@example.com, bob@example.com
+```
+
+Redeploy afterwards. Matching ignores case and surrounding spaces.
 
 **No figures are stored in this repo.** The page ships with no data at all — every
 number it shows is fetched at runtime through `/api/demand`. Nothing in these files
@@ -82,6 +103,7 @@ The status line under the title always says which of these you are looking at.
 | --- | --- |
 | `SUPABASE_URL` | `https://<project-ref>.supabase.co` |
 | `SUPABASE_SERVICE_KEY` | the `service_role` key, Supabase → Settings → API |
+| `ALLOWED_EMAILS` | comma-separated Google addresses allowed to view |
 
 The service key bypasses RLS, which is why the table needs no read policy. It is a
 full-access credential: it belongs in Vercel's environment variables and nowhere else —
@@ -89,7 +111,17 @@ not in this repo, not in the page.
 
 Redeploy after adding them. Functions only pick up env vars on a new deployment.
 
-**2. Push notifications** (optional). Run `realtime-setup.sql` in the Supabase SQL editor.
+**2. Google sign-in.** In Google Cloud Console create an OAuth client (type: Web
+application) with:
+
+- Authorised JavaScript origin: your Vercel URL
+- Authorised redirect URI: `https://<project-ref>.supabase.co/auth/v1/callback`
+
+Paste the client ID and secret into Supabase → Authentication → Providers →
+Google, and add your Vercel URL under Authentication → URL Configuration →
+Redirect URLs.
+
+**3. Push notifications** (optional). Run `realtime-setup.sql` in the Supabase SQL editor.
 Without it everything still works; updates arrive on the 5-minute poll instead of
 instantly.
 
