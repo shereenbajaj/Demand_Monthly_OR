@@ -1,5 +1,8 @@
 {
   "name": "demand-monthly-dashboard",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@metago-health/auth-node": "^0.2.0"
+  }
 }

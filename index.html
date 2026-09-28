@@ -84,6 +84,16 @@
 
   .dm-hero{background:var(--surface-1);border:1px solid var(--hair);border-radius:12px;
     padding:18px 20px 20px;margin-bottom:12px}
+  .dm-signin{display:inline-flex;align-items:center;gap:9px;font:inherit;font-size:14px;
+    font-weight:600;padding:9px 20px;border-radius:9px;border:1px solid var(--hair);
+    background:var(--surface-1);color:var(--ink-1);cursor:pointer;
+    transition:background .12s,border-color .12s}
+  .dm-signin:hover{background:var(--plane);border-color:var(--ink-3)}
+  .dm-signin:focus-visible{outline:2px solid var(--online);outline-offset:2px}
+  .dm-signout{font:inherit;font-size:12px;padding:2px 9px;border-radius:7px;
+    border:1px solid transparent;background:none;color:var(--ink-3);cursor:pointer}
+  .dm-signout:hover{color:var(--ink-1);border-color:var(--hair)}
+  .dm-viewer{font-size:12px;color:var(--ink-3)}
   .dm-boot{display:none;padding:56px 20px;text-align:center}
   .dm-boot-t{font-size:16px;font-weight:600;color:var(--ink-1);margin:0 0 6px}
   .dm-boot-d{font-size:13px;color:var(--ink-2);margin:0 0 16px}
@@ -159,6 +169,7 @@
   <div class="dm-boot" id="dmBoot">
     <p class="dm-boot-t" id="dmBootT">Loading demand data…</p>
     <p class="dm-boot-d" id="dmBootD">Reading demand_monthly_summary.</p>
+    <button class="dm-signin" id="dmSignIn" type="button" hidden>Sign in</button>
     <button class="dm-refresh" id="dmBootBtn" type="button" hidden>Try again</button>
   </div>
 
@@ -175,6 +186,8 @@
           <span class="dm-status-dot" aria-hidden="true"></span>
           <span id="dmStatusTxt">Saved snapshot</span>
           <button class="dm-refresh" id="dmRefresh" type="button" hidden>Refresh</button>
+          <span class="dm-viewer" id="dmViewer" hidden></span>
+          <button class="dm-signout" id="dmSignOut" type="button" hidden>Sign out</button>
         </p>
       </div>
       <button class="dm-back" id="dmBack" type="button" hidden>← All categories</button>
@@ -1320,16 +1333,26 @@
   }
   window.DEMAND_BOOT = function(state, msg){
     var t = document.getElementById("dmBootT"), d = document.getElementById("dmBootD"),
-        b = document.getElementById("dmBootBtn");
-    if(!t) return;
-    if(state === "error"){
+        b = document.getElementById("dmBootBtn"), g = document.getElementById("dmSignIn");
+    if(!t || !g) return;
+    if(state === "signin"){
+      t.textContent = "Demand — monthly";
+      d.textContent = msg || "Sign in with your MetaGO account to view this dashboard.";
+      b.hidden = true; g.hidden = false;
+    } else if(state === "denied"){
+      /* Being turned away is not the same as being broken. Say which it is, and
+         offer a different account rather than a pointless retry. */
+      t.textContent = "No access";
+      d.textContent = msg || "This account is not entitled to this dashboard.";
+      b.hidden = true; g.hidden = false;
+    } else if(state === "error"){
       t.textContent = "Couldn't load demand data";
       d.textContent = msg || "The live read failed.";
-      b.hidden = false;
+      b.hidden = false; g.hidden = true;
     } else {
-      t.textContent = "Loading demand data…";
+      t.textContent = msg || "Loading demand data…";
       d.textContent = "Reading demand_monthly_summary.";
-      b.hidden = true;
+      b.hidden = true; g.hidden = true;
     }
   };
 

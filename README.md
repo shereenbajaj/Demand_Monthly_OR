@@ -48,73 +48,64 @@ Two further caveats, also stated in the note at the bottom of the page:
 | `live.js` | Browser side: fetches `/api/demand`, listens for change pings, redraws. |
 | `realtime-setup.sql` | One-time setup for push notifications. Optional. |
 
-**No figures are stored in this repo.** The page ships with no data at all — every
-number it shows is fetched at runtime through `/api/demand`. Nothing in these files
-reveals donation volumes.
+## Access — MetaGO Central Auth
 
-No service key is here either. The only Supabase credential in the source is the
-**publishable** key in `live.js`, which can do exactly one thing: join a notification
-channel. It cannot read `demand_monthly_summary` — that table has RLS on with no
-policies, and only the serverless function, holding the service key, can read it.
+Sign-in goes through `auth.metago.health`. The page exchanges the SSO cookie for
+a short-lived access token scoped to this app, and sends it with every call to
+`/api/demand`. The function verifies it with `@metago-health/auth-node` against
+the service's published JWKS — issuer, audience, algorithm and expiry all
+enforced, no shared secret on this side.
 
-## Live data
+**The audience check is the access control.** A token minted for another app is
+rejected here, so entitlement is decided centrally rather than by a list in this
+repo. `ALLOWED_EMAILS` is available as an optional extra narrowing on top; leave
+it unset to accept anyone the auth service has entitled to this client.
 
-Two mechanisms. There is no bundled fallback — if the fetch fails the page says so
-plainly and offers a retry, rather than showing figures that may be months out of date:
+Flow:
 
-1. **Push.** A Postgres trigger broadcasts a bare "the table changed" ping on a Realtime
-   channel. The page hears it and re-fetches. The ping carries a timestamp and no row
-   data. Needs `realtime-setup.sql` to have been run.
-2. **Fetch.** The page calls `/api/demand` on load, every 5 minutes while the tab is
-   visible, whenever the tab regains focus, and when the Refresh button is clicked. This
-   is the only path that carries actual numbers.
-If nothing has loaded yet, the page shows "Couldn't load demand data" with the actual
-error and a **Try again** button. If data is already on screen and a later refresh
-fails, it keeps that data and the status line says when it was last current.
+1. `POST ${ISSUER}/v1/auth/authorize` with `credentials: "include"` → access token
+2. `401` → redirect to `${ISSUER}/login?client_id=…&return_to=…`, user returns warm
+3. A `401` from `/api/demand` means the token aged out: mint a new one and retry
+   once, silently. Only a failed re-authorize sends the user back to login.
 
-The status line under the title always says which of these you are looking at.
-
-### Setup
-
-**1. Environment variables** (Vercel → Settings → Environment Variables):
+### Environment variables
 
 | Name | Value |
 | --- | --- |
-| `SUPABASE_URL` | `https://<project-ref>.supabase.co` |
-| `SUPABASE_SERVICE_KEY` | the `service_role` key, Supabase → Settings → API |
+| `METAGO_CLIENT_ID` | this app's client id in the auth service — must match `CLIENT_ID` in `live.js` |
+| `NPM_TOKEN` | read token for the private registry, needed at build time |
+| `SUPABASE_URL` | `https://<ref>.supabase.co` |
+| `SUPABASE_SERVICE_KEY` | the `service_role` key |
+| `METAGO_AUTH_ISSUER` | optional, defaults to `https://auth.metago.health` |
+| `ALLOWED_EMAILS` | optional extra narrowing, comma-separated |
 
-The service key bypasses RLS, which is why the table needs no read policy. It is a
-full-access credential: it belongs in Vercel's environment variables and nowhere else —
-not in this repo, not in the page.
+### Before this works
 
-Redeploy after adding them. Functions only pick up env vars on a new deployment.
+- **Register a client id** for this dashboard in the auth service. `live.js` and
+  `METAGO_CLIENT_ID` both currently say `demand` — a placeholder, not a
+  registered client.
+- **Serve the dashboard from a `metago.health` subdomain.** The SSO cookie is
+  host-only on `auth.metago.health`. From a `*.vercel.app` origin the browser
+  treats it as third-party: Safari blocks it outright and Chrome is heading the
+  same way, so warm SSO would fail. Point e.g. `demand.metago.health` at the
+  Vercel project and the cookie is first-party again.
+- **Allow this origin in the auth service's CORS config**, with credentials.
 
-**2. Push notifications** (optional). Run `realtime-setup.sql` in the Supabase SQL editor.
-Without it everything still works; updates arrive on the 5-minute poll instead of
-instantly.
+**No figures are stored in this repo.**
 
-### Checking it works
+## Building
 
-- Open the dashboard. The status line should read "Updated HH:MM" with a green dot.
-- Change a row in Supabase. With push set up the page should update within a second or
-  two; without it, within five minutes, or immediately if you click Refresh.
-- `/api/demand` in a browser tab returns the raw JSON — useful for telling apart "the
-  function is broken" from "the page is broken".
+`.npmrc` routes installs through the MetaGO registry and reads `${NPM_TOKEN}` at
+install time — the token is never committed. Set `NPM_TOKEN` in Vercel before
+the first deploy or the build fails resolving `@metago-health/auth-node`.
 
-## Deploying
-
-Static hosting, nothing to build. On Vercel: import the repo, framework preset **Other**,
-leave build command and output directory empty.
-
-## Editing
-
-`index.html` is generated. Edit `src-dashboard-body.html`, then reassemble:
+`index.html` is generated. Edit `src-dashboard-body.html`, then:
 
 ```sh
 {
   echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
   echo '<meta name="viewport" content="width=device-width, initial-scale=1">'
-  echo '<title>Demand — monthly</title></head><body>'
+  echo '</head><body>'
   cat src-dashboard-body.html
   echo '<script type="module" src="./live.js"></script>'
   echo '</body></html>'
@@ -123,6 +114,6 @@ leave build command and output directory empty.
 
 ## The column contract
 
-`api/demand.js` returns each row as a plain array, and the page indexes into it by
+`api/demand.js` returns each row as a plain array and the page indexes into it by
 position. The `COLS` list in that file is the contract — reordering it silently
-mislabels every chart. Add new columns at the end.
+mislabels every chart. Append new columns at the end.
